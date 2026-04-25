@@ -1,0 +1,14 @@
+config.py
+
+venv/
+
+downloads/
+
+__pycache__/
+*.py[cod]
+
+.vscode/
+.idea/
+
+.DS_Store
+Thumbs.db
