@@ -41,6 +41,7 @@ def get_back_keyboard() -> ReplyKeyboardMarkup:
         one_time_keyboard=False
     )
 
+# ---------- Управление ----------
 
 @router.message(Command("stop"))
 async def stop_command(message: types.Message, state: FSMContext):
@@ -56,6 +57,7 @@ async def stopped_handler(message: types.Message):
         "🛑 Бот не принимает ссылки. Используйте команду /start в меню (слева от поля ввода), чтобы запустить заново."
     )
 
+# ---------- Выбор платформы ----------
 
 @router.message(F.text.in_(PLATFORM_MAP.keys()))
 async def platform_selected(message: types.Message, state: FSMContext):
@@ -78,6 +80,7 @@ async def go_back_to_menu(message: types.Message, state: FSMContext):
         reply_markup=get_main_keyboard()
     )
 
+# ---------- Обработка ссылки ----------
 
 @router.message(DownloadStates.waiting_for_url)
 async def process_url(message: types.Message, state: FSMContext):
@@ -89,7 +92,6 @@ async def process_url(message: types.Message, state: FSMContext):
         return
 
     platform_name = PLATFORM_NAMES.get(platform, platform)
-
     url = message.text.strip()
     if url == "🔙 Назад":
         return
@@ -106,6 +108,7 @@ async def process_url(message: types.Message, state: FSMContext):
 
     status_msg = await message.reply("⏳ Ищу видео...")
 
+    # ================== YouTube Shorts ==================
     if platform == "youtube_shorts":
         os.makedirs("downloads", exist_ok=True)
         await status_msg.edit_text("📥 Скачиваю и объединяю видео (до минуты)...")
@@ -120,22 +123,18 @@ async def process_url(message: types.Message, state: FSMContext):
             return
 
         actual_size = os.path.getsize(file_path)
+
+        # Если файл > 50 МБ — даём прямую ссылку, так как Bot API не примет
         if actual_size > MAX_TELEGRAM_FILE_SIZE:
-            await status_msg.edit_text("📤 Файл >50 МБ, отправляю как документ...")
-            try:
-                doc_file = FSInputFile(file_path)
-                await message.reply_document(
-                    document=doc_file,
-                    caption="✅ Готово!"
-                )
-            except Exception as e:
-                await message.reply(f"❌ Ошибка при отправке документа: {e}")
-            finally:
-                if os.path.exists(file_path):
-                    os.remove(file_path)
-            await status_msg.delete()
+            os.remove(file_path)  # файл уже не нужен
+            await status_msg.edit_text(
+                f"📁 Видео {actual_size / (1024 * 1024):.1f} МБ — превышает лимит Telegram (50 МБ).\n\n"
+                f"🔗 Прямая ссылка для скачивания:\n{download_url}\n\n"
+                "Ссылка временная, скачайте в ближайшее время.",
+                disable_web_page_preview=False
+            )
             await message.answer(
-                f"📎 Отправьте ещё ссылку на {platform_name} или нажмите «🔙 Назад» для возврата в меню.",
+                f"📎 Отправьте ещё ссылку на {platform_name} или нажмите «🔙 Назад».",
                 reply_markup=get_back_keyboard()
             )
             return
@@ -143,7 +142,7 @@ async def process_url(message: types.Message, state: FSMContext):
         await status_msg.edit_text("📤 Отправляю видео...")
         try:
             video_file = FSInputFile(file_path)
-            await message.reply_video(video=video_file, caption="✅ Готово!")   # Единая подпись
+            await message.reply_video(video=video_file, caption="✅ Готово!")
         except Exception as e:
             await message.reply(f"❌ Ошибка при отправке видео: {e}")
         finally:
@@ -152,11 +151,12 @@ async def process_url(message: types.Message, state: FSMContext):
 
         await status_msg.delete()
         await message.answer(
-            f"📎 Отправьте ещё ссылку на {platform_name} или нажмите «🔙 Назад» для возврата в меню.",
+            f"📎 Отправьте ещё ссылку на {platform_name} или нажмите «🔙 Назад».",
             reply_markup=get_back_keyboard()
         )
         return
 
+    # ================== TikTok / Instagram ==================
     download_func = DOWNLOAD_FUNCTIONS.get(platform)
     if not download_func:
         await status_msg.edit_text("❌ Платформа не поддерживается.")
@@ -172,6 +172,7 @@ async def process_url(message: types.Message, state: FSMContext):
     video_id = info["video_id"]
     file_size = info.get("file_size")
 
+    # Если заранее известен размер и он > 50 МБ — сразу даём ссылку, не скачивая
     if file_size and file_size > MAX_TELEGRAM_FILE_SIZE:
         size_mb = file_size / (1024 * 1024)
         await status_msg.edit_text(
@@ -181,11 +182,12 @@ async def process_url(message: types.Message, state: FSMContext):
             disable_web_page_preview=False
         )
         await message.answer(
-            f"📎 Отправьте ещё ссылку на {platform_name} или нажмите «🔙 Назад» для возврата в меню.",
+            f"📎 Отправьте ещё ссылку на {platform_name} или нажмите «🔙 Назад».",
             reply_markup=get_back_keyboard()
         )
         return
 
+    # Иначе скачиваем
     os.makedirs("downloads", exist_ok=True)
     file_path = os.path.join("downloads", f"{platform}_{video_id}.mp4")
 
@@ -203,31 +205,35 @@ async def process_url(message: types.Message, state: FSMContext):
         return
 
     actual_size = os.path.getsize(file_path)
+
+    # Если фактический размер превысил 50 МБ — удаляем файл и даём ссылку
     if actual_size > MAX_TELEGRAM_FILE_SIZE:
         os.remove(file_path)
         await status_msg.edit_text(
-            f"📁 Скачанный файл {actual_size / (1024 * 1024):.1f} МБ превышает 50 МБ.\n"
-            f"Прямая ссылка: {download_url}",
+            f"📁 Скачанный файл {actual_size / (1024 * 1024):.1f} МБ превышает 50 МБ.\n\n"
+            f"🔗 Прямая ссылка для скачивания:\n{download_url}\n\n"
+            "Ссылка временная, скачайте в ближайшее время.",
             disable_web_page_preview=False
         )
         await message.answer(
-            f"📎 Отправьте ещё ссылку на {platform_name} или нажмите «🔙 Назад» для возврата в меню.",
+            f"📎 Отправьте ещё ссылку на {platform_name} или нажмите «🔙 Назад».",
             reply_markup=get_back_keyboard()
         )
         return
 
+    # Отправляем как видео (≤ 50 МБ)
     await status_msg.edit_text("📤 Отправляю видео...")
     try:
         video_file = FSInputFile(file_path)
         await message.reply_video(video=video_file, caption="✅ Готово!")
     except Exception as e:
-        await message.reply(f"❌ Ошибка при отправке: {e}")
+        await message.reply(f"❌ Ошибка при отправке видео: {e}")
     finally:
         if os.path.exists(file_path):
             os.remove(file_path)
 
     await status_msg.delete()
     await message.answer(
-        f"📎 Отправьте ещё ссылку на {platform_name} или нажмите «🔙 Назад» для возврата в меню.",
+        f"📎 Отправьте ещё ссылку на {platform_name} или нажмите «🔙 Назад».",
         reply_markup=get_back_keyboard()
     )
