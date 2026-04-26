@@ -4,10 +4,7 @@ import yt_dlp
 from config import HEADERS
 
 async def get_instagram_video_info(url: str) -> dict | None:
-    """
-    Возвращает прямую ссылку на Instagram Reels в максимальном качестве со звуком.
-    Ищет формат с ненулевыми видео- и аудиокодеками.
-    """
+    """Возвращает прямую ссылку на Instagram Reels в лучшем качестве со звуком."""
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
@@ -21,6 +18,7 @@ async def get_instagram_video_info(url: str) -> dict | None:
                 logging.error("Instagram: нет доступных форматов")
                 return None
 
+            # Ищем лучший формат с видео и аудио
             best_combined = None
             for f in formats:
                 if f.get('vcodec') != 'none' and f.get('acodec') != 'none':
@@ -30,7 +28,7 @@ async def get_instagram_video_info(url: str) -> dict | None:
                         best_combined = f
 
             if not best_combined:
-                best_combined = formats[-1]
+                best_combined = formats[-1]  # запасной вариант
 
             download_url = best_combined.get('url')
             if not download_url:

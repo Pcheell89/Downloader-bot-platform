@@ -41,8 +41,6 @@ def get_back_keyboard() -> ReplyKeyboardMarkup:
         one_time_keyboard=False
     )
 
-# ---------- Управление ----------
-
 @router.message(Command("stop"))
 async def stop_command(message: types.Message, state: FSMContext):
     await state.set_state(DownloadStates.stopped)
